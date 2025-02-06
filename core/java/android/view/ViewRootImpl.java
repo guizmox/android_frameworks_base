@@ -1006,7 +1006,7 @@ public final class ViewRootImpl implements ViewParent,
                 mAttachInfo.mRootView = view;
                 mAttachInfo.mScalingRequired = mTranslator != null;
                 mAttachInfo.mApplicationScale =
-                        mTranslator == null ? 1.0f : mTranslator.applicationScale;
+                        mTranslator == null ? 1.0f : mTranslator.getApplicationScale();
                 if (panelParentView != null) {
                     mAttachInfo.mPanelParentWindowToken
                             = panelParentView.getApplicationWindowToken();
@@ -1669,9 +1669,6 @@ public final class ViewRootImpl implements ViewParent,
             if (mCurScrollY != 0) {
                 dirty.offset(0, -mCurScrollY);
             }
-            if (mTranslator != null) {
-                mTranslator.translateRectInAppWindowToScreen(dirty);
-            }
             if (mAttachInfo.mScalingRequired) {
                 dirty.inset(-1, -1);
             }
@@ -1820,9 +1817,8 @@ public final class ViewRootImpl implements ViewParent,
         // mWinFrame is already adjusted for surface insets. So offset it and use it as
         // the cropping bounds.
         mTempBoundsRect.set(mWinFrame);
-        mTempBoundsRect.offsetTo(mWindowAttributes.surfaceInsets.left,
-                mWindowAttributes.surfaceInsets.top);
-        mTransaction.setWindowCrop(mBoundsLayer, mTempBoundsRect);
+		if (mTranslator != null)
+        	mTransaction.setWindowCrop(mBoundsLayer, mTempBoundsRect);
     }
 
     /**
@@ -3236,7 +3232,7 @@ public final class ViewRootImpl implements ViewParent,
                         final WindowManager.LayoutParams lp = mWindowAttributes;
                         final Rect surfaceInsets = lp != null ? lp.surfaceInsets : null;
                         mAttachInfo.mThreadedRenderer.initializeIfNeeded(
-                                mWidth, mHeight, mAttachInfo, mSurface, surfaceInsets);
+                                surfaceInsets.left + mWidth, surfaceInsets.top + mHeight, mAttachInfo, mSurface, surfaceInsets);
                     } catch (OutOfResourcesException e) {
                         Log.e(mTag, "OutOfResourcesException locking surface", e);
                         try {
@@ -4022,11 +4018,15 @@ public final class ViewRootImpl implements ViewParent,
             }
             return false;
         }
-
+		
         if (fullRedrawNeeded) {
             dirty.set(0, 0, (int) (mWidth * appScale + 0.5f), (int) (mHeight * appScale + 0.5f));
         }
-
+		
+		if (mTranslator != null) {
+			mTranslator.translateRectInAppWindowToScreen(dirty);
+		}
+		
         if (DEBUG_ORIENTATION || DEBUG_DRAW) {
             Log.v(mTag, "Draw " + mView + "/"
                     + mWindowAttributes.getTitle()
@@ -4047,7 +4047,7 @@ public final class ViewRootImpl implements ViewParent,
             yOffset -= surfaceInsets.top;
 
             // Offset dirty rect for surface insets.
-            dirty.offset(surfaceInsets.left, surfaceInsets.right);
+            dirty.offset(surfaceInsets.left, surfaceInsets.top);
         }
 
         boolean accessibilityFocusDirty = false;
@@ -4257,6 +4257,9 @@ public final class ViewRootImpl implements ViewParent,
      */
     private void drawAccessibilityFocusedDrawableIfNeeded(Canvas canvas) {
         final Rect bounds = mAttachInfo.mTmpInvalRect;
+		if (mTranslator != null) {
+			mTranslator.translateRectInAppWindowToScreen(bounds);
+		}
         if (getAccessibilityFocusedRect(bounds)) {
             final Drawable drawable = getAccessibilityFocusedDrawable();
             if (drawable != null) {
@@ -4292,6 +4295,9 @@ public final class ViewRootImpl implements ViewParent,
         final AttachInfo attachInfo = mAttachInfo;
         bounds.offset(0, attachInfo.mViewRootImpl.mScrollY);
         bounds.offset(-attachInfo.mWindowLeft, -attachInfo.mWindowTop);
+		if (mTranslator != null) {
+			mTranslator.translateRectInAppWindowToScreen(bounds);
+		}
         if (!bounds.intersect(0, 0, attachInfo.mViewRootImpl.mWidth,
                 attachInfo.mViewRootImpl.mHeight)) {
             // If no intersection, set bounds to empty.
@@ -4527,6 +4533,9 @@ public final class ViewRootImpl implements ViewParent,
             if (provider != null) {
                 // Invalidate the area of the cleared accessibility focus.
                 focusNode.getBoundsInParent(mTempRect);
+				if (mTranslator != null) {
+					mTranslator.translateRectInAppWindowToScreen(mTempRect);
+				}
                 focusHost.invalidate(mTempRect);
                 // Clear accessibility focus in the virtual node.
                 final int virtualNodeId = AccessibilityNodeInfo.getVirtualDescendantId(
@@ -9015,6 +9024,8 @@ public final class ViewRootImpl implements ViewParent,
         } else {
             // The node was refreshed, invalidate bounds if necessary.
             final Rect newBounds = mAccessibilityFocusedVirtualView.getBoundsInScreen();
+			if (mTranslator != null)
+				Log.e("Squere", "handleWindowContentChangedEvent:" + oldBounds + " " + newBounds);
             if (!oldBounds.equals(newBounds)) {
                 oldBounds.union(newBounds);
                 invalidateRectOnScreen(oldBounds);
@@ -9224,6 +9235,9 @@ public final class ViewRootImpl implements ViewParent,
             // Add to the list for consideration
             Point offset = new Point(mView.getLeft(), mView.getTop());
             Rect rect = new Rect(0, 0, mView.getWidth(), mView.getHeight());
+			if (mTranslator != null) {
+				mTranslator.translateRectInAppWindowToScreen(rect);
+			}
             targets.add(new ScrollCaptureTarget(mView, rect, offset, cb));
         }
     }
@@ -9669,7 +9683,7 @@ public final class ViewRootImpl implements ViewParent,
             for (int i = mWindowCallbacks.size() - 1; i >= 0; i--) {
                 updated |=
                         mWindowCallbacks.get(i).onContentDrawn(mWindowAttributes.surfaceInsets.left,
-                                mWindowAttributes.surfaceInsets.top, mWidth, mHeight);
+                                mWindowAttributes.surfaceInsets.top, mWindowAttributes.surfaceInsets.left + mWidth, mWindowAttributes.surfaceInsets.top + mHeight);
             }
         }
         return updated | (mDragResizing && mReportNextDraw);

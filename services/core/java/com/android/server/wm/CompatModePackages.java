@@ -62,6 +62,10 @@ public final class CompatModePackages {
     private static final int COMPAT_FLAG_DONT_ASK = 1<<0;
     // Compatibility state: compatibility mode is enabled.
     private static final int COMPAT_FLAG_ENABLED = 1<<1;
+    // Compatibility state: squere compatibility mode is enabled.
+    private static final int SQUERE_FLAG_ENABLED = 1<<2;
+    // Compatibility state: squere compatibility mode is blocked.
+    private static final int SQUERE_FLAG_BLOCKED = 1<<3;
 
     private final HashMap<String, Integer> mPackages = new HashMap<String, Integer>();
 
@@ -88,10 +92,15 @@ public final class CompatModePackages {
         mService = service;
         mFile = new AtomicFile(new File(systemDir, "packages-compat.xml"), "compat-mode");
         mHandler = new CompatHandler(handler.getLooper());
+		LoadConfigFile(new AtomicFile(new File("/vendor/etc/", "square-compat.xml"), "rules"));
+		LoadConfigFile(mFile);
+    }
 
+	private void LoadConfigFile(AtomicFile file)
+	{
         FileInputStream fis = null;
         try {
-            fis = mFile.openRead();
+            fis = file.openRead();
             XmlPullParser parser = Xml.newPullParser();
             parser.setInput(fis, StandardCharsets.UTF_8.name());
             int eventType = parser.getEventType();
@@ -114,13 +123,15 @@ public final class CompatModePackages {
                                 String pkg = parser.getAttributeValue(null, "name");
                                 if (pkg != null) {
                                     String mode = parser.getAttributeValue(null, "mode");
-                                    int modeInt = 0;
+                                    int modeInt = getPackageFlags(pkg);
                                     if (mode != null) {
                                         try {
-                                            modeInt = Integer.parseInt(mode);
+                                            modeInt |= Integer.parseInt(mode);
                                         } catch (NumberFormatException e) {
                                         }
                                     }
+									if ((modeInt & SQUERE_FLAG_BLOCKED) != 0)
+										modeInt &= ~SQUERE_FLAG_ENABLED;
                                     mPackages.put(pkg, modeInt);
                                 }
                             }
@@ -141,7 +152,7 @@ public final class CompatModePackages {
                 }
             }
         }
-    }
+	}
 
     public HashMap<String, Integer> getPackages() {
         return mPackages;
@@ -203,7 +214,8 @@ public final class CompatModePackages {
         final Configuration globalConfig = mService.getGlobalConfiguration();
         CompatibilityInfo ci = new CompatibilityInfo(ai, globalConfig.screenLayout,
                 globalConfig.smallestScreenWidthDp,
-                (getPackageFlags(ai.packageName)&COMPAT_FLAG_ENABLED) != 0);
+                (getPackageFlags(ai.packageName)&COMPAT_FLAG_ENABLED) != 0,
+                (getPackageFlags(ai.packageName)&SQUERE_FLAG_ENABLED) != 0);
         //Slog.i(TAG, "*********** COMPAT FOR PKG " + ai.packageName + ": " + ci);
         return ci;
     }
@@ -212,7 +224,8 @@ public final class CompatModePackages {
         final boolean enabled = (getPackageFlags(ai.packageName)&COMPAT_FLAG_ENABLED) != 0;
         final Configuration globalConfig = mService.getGlobalConfiguration();
         final CompatibilityInfo info = new CompatibilityInfo(ai, globalConfig.screenLayout,
-                globalConfig.smallestScreenWidthDp, enabled);
+                globalConfig.smallestScreenWidthDp, enabled,
+                (getPackageFlags(ai.packageName)&SQUERE_FLAG_ENABLED) != 0);
         if (info.alwaysSupportsScreen()) {
             return ActivityManager.COMPAT_MODE_NEVER;
         }
@@ -351,6 +364,92 @@ public final class CompatModePackages {
         }
     }
 
+    public boolean userCanChangeSquareCompatModeLocked(String packageName) {
+        ApplicationInfo ai = null;
+        try {
+            ai = AppGlobals.getPackageManager().getApplicationInfo(packageName, 0, 0);
+        } catch (RemoteException e) {
+        }
+        if (ai == null) {
+            return false;
+        }
+        return (getPackageFlags(ai.packageName)&SQUERE_FLAG_BLOCKED) == 0;
+    }
+
+    public boolean getPackageSquareCompatModeLocked(String packageName) {
+        ApplicationInfo ai = null;
+        try {
+            ai = AppGlobals.getPackageManager().getApplicationInfo(packageName, 0, 0);
+        } catch (RemoteException e) {
+        }
+        if (ai == null) {
+            return false;
+        }
+        return (getPackageFlags(ai.packageName)&SQUERE_FLAG_ENABLED) != 0;
+    }
+
+    public void setPackageSquareCompatModeLocked(String packageName, boolean mode) {
+        ApplicationInfo ai = null;
+        try {
+            ai = AppGlobals.getPackageManager().getApplicationInfo(packageName, 0, 0);
+        } catch (RemoteException e) {
+        }
+        if (ai == null) {
+            Slog.w(TAG, "setPackageSquareCompatMode fai  led: unknown package " + packageName);
+            return;
+        }
+
+        int curFlags = getPackageFlags(ai.packageName);
+
+        int newFlags = curFlags;
+        if (mode) {
+            newFlags |= SQUERE_FLAG_ENABLED;
+        } else {
+            newFlags &= ~SQUERE_FLAG_ENABLED;
+        }
+
+        if (newFlags != curFlags) {
+            if (newFlags != 0) {
+                mPackages.put(ai.packageName, newFlags);
+            } else {
+                mPackages.remove(ai.packageName);
+            }
+
+            // Need to get compatibility info in new state.
+            CompatibilityInfo ci = compatibilityInfoForPackageLocked(ai);
+
+            scheduleWrite();
+
+            final ActivityStack stack = mService.getTopDisplayFocusedStack();
+            ActivityRecord starting = stack.restartPackage(packageName);
+
+            // Tell all processes that loaded this package about the change.
+            SparseArray<WindowProcessController> pidMap = mService.mProcessMap.getPidMap();
+            for (int i = pidMap.size() - 1; i >= 0; i--) {
+                final WindowProcessController app = pidMap.valueAt(i);
+                if (!app.mPkgList.contains(packageName)) {
+                    continue;
+                }
+                try {
+                    if (app.hasThread()) {
+                        if (DEBUG_CONFIGURATION) Slog.v(TAG_CONFIGURATION, "Sending to proc "
+                                + app.mName + " new compat " + ci);
+                        app.getThread().updatePackageCompatibilityInfo(packageName, ci);
+                    }
+                } catch (Exception e) {
+                }
+            }
+
+            if (starting != null) {
+                starting.ensureActivityConfiguration(0 /* globalChanges */,
+                        false /* preserveWindow */);
+                // And we need to make sure at this point that all other activities
+                // are made visible with the correct configuration.
+                stack.ensureActivitiesVisible(starting, 0, !PRESERVE_WINDOWS);
+            }
+        }
+    }
+
     private void saveCompatModes() {
         HashMap<String, Integer> pkgs;
         synchronized (mService.mGlobalLock) {
@@ -385,14 +484,6 @@ public final class CompatModePackages {
                 } catch (RemoteException e) {
                 }
                 if (ai == null) {
-                    continue;
-                }
-                CompatibilityInfo info = new CompatibilityInfo(ai, screenLayout,
-                        smallestScreenWidthDp, false);
-                if (info.alwaysSupportsScreen()) {
-                    continue;
-                }
-                if (info.neverSupportsScreen()) {
                     continue;
                 }
                 out.startTag(null, "pkg");

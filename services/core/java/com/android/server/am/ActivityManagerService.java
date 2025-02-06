@@ -3292,6 +3292,21 @@ public class ActivityManagerService extends IActivityManager.Stub
         mActivityTaskManager.setPackageScreenCompatMode(packageName, mode);
     }
 
+    @Override
+    public boolean userCanChangeSquareCompatMode(String packageName) {
+        return mActivityTaskManager.userCanChangeSquareCompatMode(packageName);
+    }
+
+    @Override
+    public boolean getPackageSquareCompatMode(String packageName) {
+        return mActivityTaskManager.getPackageSquareCompatMode(packageName);
+    }
+
+    @Override
+    public void setPackageSquareCompatMode(String packageName, boolean mode) {
+        mActivityTaskManager.setPackageSquareCompatMode(packageName, mode);
+    }
+
     private boolean hasUsageStatsPermission(String callingPackage) {
         final int mode = mAppOpsService.noteOperation(AppOpsManager.OP_GET_USAGE_STATS,
                 Binder.getCallingUid(), callingPackage, null, false, "", false);

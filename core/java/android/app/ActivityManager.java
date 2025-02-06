@@ -887,6 +887,33 @@ public class ActivityManager {
     }
 
     /** @hide */
+    public boolean userCanChangeSquareCompatMode(String packageName) {
+        try {
+            return getTaskService().userCanChangeSquareCompatMode(packageName);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /** @hide */
+    public boolean getPackageSquareCompatMode(String packageName) {
+        try {
+            return getTaskService().getPackageSquareCompatMode(packageName);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /** @hide */
+    public void setPackageSquareCompatMode(String packageName, boolean mode) {
+        try {
+            getTaskService().setPackageSquareCompatMode(packageName, mode);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /** @hide */
     public boolean getPackageAskScreenCompat(String packageName) {
         try {
             return getTaskService().getPackageAskScreenCompat(packageName);

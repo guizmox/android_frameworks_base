@@ -4789,6 +4789,27 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
     }
 
     @Override
+    public boolean userCanChangeSquareCompatMode(String packageName) {
+        synchronized (mGlobalLock) {
+       		return mCompatModePackages.userCanChangeSquareCompatModeLocked(packageName);
+        }
+    }
+
+    @Override
+    public boolean getPackageSquareCompatMode(String packageName) {
+        synchronized (mGlobalLock) {
+        	return mCompatModePackages.getPackageSquareCompatModeLocked(packageName);
+        }
+    }
+
+    @Override
+    public void setPackageSquareCompatMode(String packageName, boolean mode) {
+        synchronized (mGlobalLock) {
+        	mCompatModePackages.setPackageSquareCompatModeLocked(packageName, mode);
+        }
+    }
+
+    @Override
     public boolean getPackageAskScreenCompat(String packageName) {
         enforceNotIsolatedCaller("getPackageAskScreenCompat");
         synchronized (mGlobalLock) {

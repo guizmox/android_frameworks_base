@@ -645,6 +645,11 @@ public class SurfaceView extends View implements ViewRootImpl.SurfaceChangedCall
             } else {
                 mTmpRect.set(0, 0, mSurfaceWidth, mSurfaceHeight);
             }
+			final ViewRootImpl viewRoot = getViewRootImpl();
+			final Translator translator = viewRoot.mTranslator;
+			if (translator != null) {
+				translator.translateRectInAppWindowToScreen(mTmpRect);
+			}
             SyncRtSurfaceTransactionApplier applier = new SyncRtSurfaceTransactionApplier(this);
             applier.scheduleApply(
                     new SyncRtSurfaceTransactionApplier.SurfaceParams.Builder(mSurfaceControl)
@@ -656,6 +661,11 @@ public class SurfaceView extends View implements ViewRootImpl.SurfaceChangedCall
     private void clearSurfaceViewPort(Canvas canvas) {
         if (mCornerRadius > 0f) {
             canvas.getClipBounds(mTmpRect);
+			final ViewRootImpl viewRoot = getViewRootImpl();
+			final Translator translator = viewRoot.mTranslator;
+			if (translator != null) {
+				translator.translateRectInAppWindowToScreen(mTmpRect);
+			}
             if (mClipSurfaceToBounds && mClipBounds != null) {
                 mTmpRect.intersect(mClipBounds);
             }
@@ -965,7 +975,16 @@ public class SurfaceView extends View implements ViewRootImpl.SurfaceChangedCall
                 mScreenRect.right = mWindowSpaceLeft + getWidth();
                 mScreenRect.bottom = mWindowSpaceTop + getHeight();
                 if (translator != null) {
-                    translator.translateRectInAppWindowToScreen(mScreenRect);
+                    translator.translateRectInAppWindowToScreen(mScreenRect); 
+					if (mScreenRect.left > 0)
+						mRequestedWidth = mScreenRect.right;
+					else
+						mRequestedWidth = mScreenRect.right - mScreenRect.left;
+					if (mScreenRect.top > 0)
+						mRequestedHeight = mScreenRect.bottom;
+					else
+						mRequestedHeight = mScreenRect.bottom - mScreenRect.top;
+					requestLayout();
                 }
 
                 final Rect surfaceInsets = viewRoot.mWindowAttributes.surfaceInsets;
@@ -1072,10 +1091,14 @@ public class SurfaceView extends View implements ViewRootImpl.SurfaceChangedCall
                         // use SCALING_MODE_SCALE and submit a larger size than the surface
                         // size.
                         if (mClipSurfaceToBounds && mClipBounds != null) {
-                            mTmpTransaction.setWindowCrop(mSurfaceControl, mClipBounds);
+							Rect surfaceFrame = mSurfaceFrame;
+							if (translator != null) {
+								translator.translateRectInAppWindowToScreen(surfaceFrame);
+							}
+                            mTmpTransaction.setWindowCrop(mSurfaceControl, surfaceFrame);
                         } else {
-                            mTmpTransaction.setWindowCrop(mSurfaceControl, mSurfaceWidth,
-                                    mSurfaceHeight);
+                            mTmpTransaction.setWindowCrop(mSurfaceControl, mSurfaceWidth + mScreenRect.left,
+                                    mSurfaceHeight + mScreenRect.top);
                         }
                     } else if ((layoutSizeChanged || positionChanged || visibleChanged) &&
                             viewRoot.useBLAST()) {
@@ -1096,17 +1119,15 @@ public class SurfaceView extends View implements ViewRootImpl.SurfaceChangedCall
 
                     mSurfaceFrame.left = 0;
                     mSurfaceFrame.top = 0;
-                    if (translator == null) {
-                        mSurfaceFrame.right = mSurfaceWidth;
-                        mSurfaceFrame.bottom = mSurfaceHeight;
-                    } else {
-                        float appInvertedScale = translator.applicationInvertedScale;
-                        mSurfaceFrame.right = (int) (mSurfaceWidth * appInvertedScale + 0.5f);
-                        mSurfaceFrame.bottom = (int) (mSurfaceHeight * appInvertedScale + 0.5f);
-                    }
+					mSurfaceFrame.right = mSurfaceWidth;
+					mSurfaceFrame.bottom = mSurfaceHeight;
+					Rect surfaceFrame = mSurfaceFrame;
+					if (translator != null) {
+						translator.translateRectInAppWindowToScreen(surfaceFrame);
+					}
 
-                    final int surfaceWidth = mSurfaceFrame.right;
-                    final int surfaceHeight = mSurfaceFrame.bottom;
+                    final int surfaceWidth = surfaceFrame.right;
+                    final int surfaceHeight = surfaceFrame.bottom;
                     realSizeChanged = mLastSurfaceWidth != surfaceWidth
                             || mLastSurfaceHeight != surfaceHeight;
                     mLastSurfaceWidth = surfaceWidth;

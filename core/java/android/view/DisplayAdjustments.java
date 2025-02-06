@@ -59,7 +59,8 @@ public class DisplayAdjustments {
                     "setCompatbilityInfo: Cannot modify DEFAULT_DISPLAY_ADJUSTMENTS");
         }
         if (compatInfo != null && (compatInfo.isScalingRequired()
-                || !compatInfo.supportsScreen())) {
+                || !compatInfo.supportsScreen()
+				|| compatInfo.isSquareCompatRequired())) {
             mCompatInfo = compatInfo;
         } else {
             mCompatInfo = CompatibilityInfo.DEFAULT_COMPATIBILITY_INFO;

@@ -527,7 +527,7 @@ public class Surface implements Parcelable {
      */
     void setCompatibilityTranslator(Translator translator) {
         if (translator != null) {
-            float appScale = translator.applicationScale;
+            float appScale = translator.getApplicationScale();
             mCompatibleMatrix = new Matrix();
             mCompatibleMatrix.setScale(appScale, appScale);
         }

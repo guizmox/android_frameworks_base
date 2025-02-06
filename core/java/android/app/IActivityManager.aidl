@@ -334,6 +334,12 @@ interface IActivityManager {
     @UnsupportedAppUsage
     void setPackageScreenCompatMode(in String packageName, int mode);
     @UnsupportedAppUsage
+    boolean userCanChangeSquareCompatMode(in String packageName);
+    @UnsupportedAppUsage
+    boolean getPackageSquareCompatMode(in String packageName);
+    @UnsupportedAppUsage
+    void setPackageSquareCompatMode(in String packageName, boolean mode);
+    @UnsupportedAppUsage
     boolean switchUser(int userid);
     @UnsupportedAppUsage
     boolean removeTask(int taskId);

@@ -29,7 +29,7 @@ import android.os.Parcelable;
 import android.util.DisplayMetrics;
 import android.view.MotionEvent;
 import android.view.WindowManager;
-import android.view.WindowManager.LayoutParams;
+import android.util.Log;
 
 /**
  * CompatibilityInfo class keeps the information about the screen compatibility mode that the
@@ -86,6 +86,8 @@ public class CompatibilityInfo implements Parcelable {
      */
     private static final int NEEDS_COMPAT_RES = 16;
 
+    private static final int NEEDS_SQUERE_COMPAT = 32;
+
     /**
      * The effective screen density we have selected for this application.
      */
@@ -97,14 +99,22 @@ public class CompatibilityInfo implements Parcelable {
     @UnsupportedAppUsage
     public final float applicationScale;
 
+	@UnsupportedAppUsage
+	public int displayWidth;
+
+	@UnsupportedAppUsage
+	public int displaySquereWidth;
+
     /**
      * Application's inverted scale.
      */
     public final float applicationInvertedScale;
 
+	private Translator mTranslator;
+
     @UnsupportedAppUsage
     public CompatibilityInfo(ApplicationInfo appInfo, int screenLayout, int sw,
-            boolean forceCompat) {
+            boolean forceCompat, boolean squareCompat) {
         int compatFlags = 0;
 
         if (appInfo.targetSdkVersion < VERSION_CODES.O) {
@@ -251,6 +261,10 @@ public class CompatibilityInfo implements Parcelable {
                 compatFlags |= SCALING_REQUIRED;
             }
         }
+		
+		if (squareCompat) {
+			compatFlags |= NEEDS_SQUERE_COMPAT;
+		}
 
         mCompatibilityFlags = compatFlags;
     }
@@ -294,6 +308,11 @@ public class CompatibilityInfo implements Parcelable {
     public boolean needsCompatResources() {
         return (mCompatibilityFlags&NEEDS_COMPAT_RES) != 0;
     }
+    
+    @UnsupportedAppUsage
+    public boolean isSquareCompatRequired() {
+        return (mCompatibilityFlags&NEEDS_SQUERE_COMPAT) != 0;
+    }
 
     /**
      * Returns the translator which translates the coordinates in compatibility mode.
@@ -301,7 +320,13 @@ public class CompatibilityInfo implements Parcelable {
      */
     @UnsupportedAppUsage
     public Translator getTranslator() {
-        return isScalingRequired() ? new Translator() : null;
+		if (isScalingRequired() || isSquareCompatRequired()) {
+			if (mTranslator == null)
+				mTranslator = new Translator();
+		} else
+			mTranslator = null;
+
+        return mTranslator;
     }
 
     /**
@@ -309,24 +334,20 @@ public class CompatibilityInfo implements Parcelable {
      * @hide
      */
     public class Translator {
-        @UnsupportedAppUsage
-        final public float applicationScale;
-        @UnsupportedAppUsage
-        final public float applicationInvertedScale;
-        
         private Rect mContentInsetsBuffer = null;
         private Rect mVisibleInsetsBuffer = null;
         private Region mTouchableAreaBuffer = null;
-        
-        Translator(float applicationScale, float applicationInvertedScale) {
-            this.applicationScale = applicationScale;
-            this.applicationInvertedScale = applicationInvertedScale;
-        }
 
         Translator() {
-            this(CompatibilityInfo.this.applicationScale,
-                    CompatibilityInfo.this.applicationInvertedScale);
         }
+
+		public float getApplicationScale() {
+			return applicationScale;
+		}
+
+		public float getApplicationInvertedScale() {
+			return applicationInvertedScale;
+		}
 
         /**
          * Translate the screen rect to the application frame.
@@ -334,6 +355,13 @@ public class CompatibilityInfo implements Parcelable {
         @UnsupportedAppUsage
         public void translateRectInScreenToAppWinFrame(Rect rect) {
             rect.scale(applicationInvertedScale);
+			if (displayWidth != displaySquereWidth) {
+				int diff = displayWidth - displaySquereWidth;
+				if (rect.right - rect.left > diff) {
+					rect.left += diff / 2;
+					rect.right -= diff / 2;
+				}
+			}
         }
 
         /**
@@ -342,6 +370,11 @@ public class CompatibilityInfo implements Parcelable {
         @UnsupportedAppUsage
         public void translateRegionInWindowToScreen(Region transparentRegion) {
             transparentRegion.scale(applicationScale);
+			if (displayWidth != displaySquereWidth) {
+				Rect rect = transparentRegion.getBounds();
+				int diff = displayWidth - displaySquereWidth;
+				transparentRegion.translate(diff / 2, 0);
+			}
         }
 
         /**
@@ -369,6 +402,10 @@ public class CompatibilityInfo implements Parcelable {
                 canvas.translate(tinyOffset, tinyOffset);
             }
             canvas.scale(applicationScale, applicationScale);
+			if (displayWidth != displaySquereWidth) {
+				int diff = displayWidth - displaySquereWidth;
+                canvas.translate(diff / 2, 0);
+			}
         }
 
         /**
@@ -377,6 +414,10 @@ public class CompatibilityInfo implements Parcelable {
         @UnsupportedAppUsage
         public void translateEventInScreenToAppWindow(MotionEvent event) {
             event.scale(applicationInvertedScale);
+			if (displayWidth != displaySquereWidth) {
+				int diff = displayWidth - displaySquereWidth;
+                event.offsetLocation(-(diff / 2), 0);
+			}
         }
 
         /**
@@ -394,6 +435,11 @@ public class CompatibilityInfo implements Parcelable {
         @UnsupportedAppUsage
         public void translateRectInAppWindowToScreen(Rect rect) {
             rect.scale(applicationScale);
+			if (displayWidth != displaySquereWidth) {
+				int diff = displayWidth - displaySquereWidth;
+				rect.left += diff / 2;
+				rect.right += diff / 2;
+			}
         }
  
         /**
@@ -402,6 +448,11 @@ public class CompatibilityInfo implements Parcelable {
         @UnsupportedAppUsage
         public void translateRectInScreenToAppWindow(Rect rect) {
             rect.scale(applicationInvertedScale);
+			if (displayWidth != displaySquereWidth) {
+				int diff = displayWidth - displaySquereWidth;
+				rect.left += diff / 2;
+				rect.right -= diff / 2;
+			}
         }
 
         /**
@@ -413,14 +464,10 @@ public class CompatibilityInfo implements Parcelable {
                 point.x *= scale;
                 point.y *= scale;
             }
-        }
-
-        /**
-         * Translate the location of the sub window.
-         * @param params
-         */
-        public void translateLayoutParamsInAppWindowToScreen(LayoutParams params) {
-            params.scale(applicationScale);
+			if (displayWidth != displaySquereWidth) {
+				int diff = displayWidth - displaySquereWidth;
+				point.x -= diff / 2;
+			}
         }
 
         /**
@@ -464,9 +511,15 @@ public class CompatibilityInfo implements Parcelable {
             // compatible with large screens, so diddle it.
             CompatibilityInfo.computeCompatibleScaling(inoutDm, inoutDm);
         } else {
-            inoutDm.widthPixels = inoutDm.noncompatWidthPixels;
+			inoutDm.widthPixels = inoutDm.noncompatWidthPixels;
             inoutDm.heightPixels = inoutDm.noncompatHeightPixels;
         }
+
+		displayWidth = inoutDm.widthPixels;
+		if (isSquareCompatRequired())
+			displaySquereWidth = (displayWidth * 3) / 4;
+		else
+			displaySquereWidth = displayWidth;
 
         if (isScalingRequired()) {
             float invertedRatio = applicationInvertedScale;
@@ -510,28 +563,28 @@ public class CompatibilityInfo implements Parcelable {
     public static float computeCompatibleScaling(DisplayMetrics dm, DisplayMetrics outDm) {
         final int width = dm.noncompatWidthPixels;
         final int height = dm.noncompatHeightPixels;
-        int shortSize, longSize;
-        if (width < height) {
-            shortSize = width;
-            longSize = height;
-        } else {
-            shortSize = height;
-            longSize = width;
-        }
-        int newShortSize = (int)(DEFAULT_NORMAL_SHORT_DIMENSION * dm.density + 0.5f);
-        float aspect = ((float)longSize) / shortSize;
-        if (aspect > MAXIMUM_ASPECT_RATIO) {
-            aspect = MAXIMUM_ASPECT_RATIO;
-        }
-        int newLongSize = (int)(newShortSize * aspect + 0.5f);
+		int shortSize, longSize;
+		if (width < height) {
+			shortSize = width;
+			longSize = height;
+		} else {
+			shortSize = height;
+			longSize = width;
+		}
+		int newShortSize = (int)(DEFAULT_NORMAL_SHORT_DIMENSION * dm.density + 0.5f);
+		float aspect = ((float)longSize) / shortSize;
+		if (aspect > MAXIMUM_ASPECT_RATIO) {
+			aspect = MAXIMUM_ASPECT_RATIO;
+		}
+		int newLongSize = (int)(newShortSize * aspect + 0.5f);
         int newWidth, newHeight;
-        if (width < height) {
-            newWidth = newShortSize;
-            newHeight = newLongSize;
-        } else {
-            newWidth = newLongSize;
-            newHeight = newShortSize;
-        }
+		if (width < height) {
+			newWidth = newShortSize;
+			newHeight = newLongSize;
+		} else {
+			newWidth = newLongSize;
+			newHeight = newShortSize;
+		}
 
         float sw = width/(float)newWidth;
         float sh = height/(float)newHeight;
@@ -584,6 +637,9 @@ public class CompatibilityInfo implements Parcelable {
         }
         if (alwaysSupportsScreen()) {
             sb.append(" always-compat");
+        }
+        if (isSquareCompatRequired()) {
+            sb.append(" square-compat");
         }
         sb.append("}");
         return sb.toString();

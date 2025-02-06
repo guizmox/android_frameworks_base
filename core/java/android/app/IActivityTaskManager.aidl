@@ -437,6 +437,10 @@ interface IActivityTaskManager {
     boolean getPackageAskScreenCompat(in String packageName);
     void setPackageAskScreenCompat(in String packageName, boolean ask);
 
+    boolean userCanChangeSquareCompatMode(in String packageName);
+    boolean getPackageSquareCompatMode(in String packageName);
+    void setPackageSquareCompatMode(in String packageName, boolean mode);
+
     /**
      * Clears launch params for given packages.
      */
