@@ -7313,7 +7313,7 @@ public final class ViewRootImpl implements ViewParent,
                     }
 
                     if (action == MotionEvent.ACTION_UP) {
-                        mLastUpTime = time;
+                        /** mLastUpTime = time;
                         mVelocityTracker.computeCurrentVelocity(1000, mFlingMaxVelocity);
                         mFlingVelocityX = mVelocityTracker.getXVelocity(mActivePointerId);
                         mFlingVelocityY = mVelocityTracker.getYVelocity(mActivePointerId);
@@ -7334,6 +7334,9 @@ public final class ViewRootImpl implements ViewParent,
                             cancelFling();
                         }
                         finishTracking();
+						*/
+						cancelFling();
+						finishTracking();
                     }
 
                     return;
