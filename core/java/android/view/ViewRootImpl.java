@@ -7233,13 +7233,50 @@ public final class ViewRootImpl implements ViewParent,
             return true;
         }
 
+    private float mLastZoomDist = -1f;
+    private static final float ZOOM_THRESHOLD = 20f;
+
+    private void processZoomEvent(MotionEvent event) {
+        if (event.getPointerCount() < 2) {
+            mLastZoomDist = -1f;
+            return;
+        }
+
+        float x1 = event.getX(0);
+        float y1 = event.getY(0);
+        float x2 = event.getX(1);
+        float y2 = event.getY(1);
+        
+        float dist = (float)Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        
+        if (mLastZoomDist > 0 && Math.abs(dist - mLastZoomDist) > ZOOM_THRESHOLD) {
+            MotionEvent zoomEvent = MotionEvent.obtain(
+                event.getDownTime(),
+                event.getEventTime(),
+                MotionEvent.ACTION_CANCEL,
+                (x1 + x2) / 2,
+                (y1 + y2) / 2,
+                event.getMetaState()
+            );
+            zoomEvent.setSource(InputDevice.SOURCE_TOUCHPAD);
+            enqueueInputEvent(zoomEvent);
+        }
+        mLastZoomDist = dist;
+    }
+
         public void process(MotionEvent event) {
-             if (!init(event) || mTouchKeypadEventsDisabled)
+           if (!init(event) || mTouchKeypadEventsDisabled)
                 return;
 
-             long time = event.getEventTime();
-             int action = event.getActionMasked();
-             switch (action) {
+            // zoom processing
+            if (event.getPointerCount() >= 2) {
+                processZoomEvent(event);
+                return; // GroupView does handle the zoom event
+            }
+
+            long time = event.getEventTime();
+            int action = event.getActionMasked();
+            switch (action) {
                 case MotionEvent.ACTION_DOWN:
                     boolean caughtFling = mFlinging;
                     cancelFling();

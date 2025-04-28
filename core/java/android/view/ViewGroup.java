@@ -2573,13 +2573,36 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         return super.dispatchGenericPointerEvent(event);
     }
 
+    // Dans la section des membres de classe
+    private float mLastTouchDist = -1f;
+    private static final float ZOOM_THRESHOLD = 20f;
+
     @Override
     public boolean dispatchGenericTouchKeypadEvent(@NonNull MotionEvent event) {
         InputDevice device = event.getDevice();
         Display display = getDisplay();
-        DisplayMetrics dm = this.mContext.getResources().getDisplayMetrics();
+        DisplayMetrics dm = mContext.getResources().getDisplayMetrics();
         boolean skipFocused = false;
 
+        // Gestion du zoom (reçoit les événements de ViewRootImpl)
+        if (event.getAction() == MotionEvent.ACTION_CANCEL && 
+            event.getSource() == InputDevice.SOURCE_TOUCHPAD) {
+            
+            float centerX = event.getX();
+            float centerY = event.getY();
+            
+            for (int i = mChildrenCount - 1; i >= 0; i--) {
+                View child = getChildAt(i);
+                if (child != null && isTransformedTouchPointInView(centerX, centerY, child, null)) {
+                    if (child.dispatchGenericMotionEvent(event)) {
+                        return true;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // Gestion normale du scroll (single-touch)
         if (device != null && display != null && dm != null && mChildrenCount != 0) {
             float x = dm.widthPixels * 0.5f;
             float y = dm.heightPixels * 0.5f;
@@ -2592,23 +2615,19 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
                         Point realDisplaySize = new Point();
                         display.getRealSize(realDisplaySize);
                         x = (realDisplaySize.x * ((event.getX() - xRange.getMin()) / xRange.getRange())) - mAttachInfo.mWindowLeft;
-                        if (x < 0.0f) {
-                            x = 0.0f;
-                        } else if (x >= dm.widthPixels) {
-                            x = dm.widthPixels - 1;
-                        }
+                        x = Math.max(0, Math.min(x, dm.widthPixels - 1));
                     }
                     break;
-
-                case Surface.ROTATION_90:
                 default:
                     break;
             }
 
+            // Distribution aux vues enfants
             for (int i = mChildrenCount - 1; i >= 0; i--) {
-                int childIndex = isChildrenDrawingOrderEnabled() ? getChildDrawingOrder(mChildrenCount, i) : i;
-                View child = mChildren[childIndex];
-                if (child.canReceivePointerEvents() && isTransformedTouchPointInView(x, y, child, null)) {
+                final View child = getChildAt(i);
+                if (child != null && child.canReceivePointerEvents() && 
+                    isTransformedTouchPointInView(x, y, child, null)) {
+                    
                     if (child.dispatchGenericMotionEvent(event)) {
                         return true;
                     }
@@ -2619,14 +2638,12 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             }
         }
 
-        if (
-            !isInTouchMode() &&
-            !skipFocused &&
-            mFocused != null &&
+        // Gestion du focus
+        if (!isInTouchMode() && !skipFocused && mFocused != null &&
             mFocused.canReceivePointerEvents() &&
             (mFocused.mPrivateFlags & PFLAG_HAS_BOUNDS) != 0 &&
-            mFocused.dispatchGenericMotionEvent(event)
-        ) {
+            mFocused.dispatchGenericMotionEvent(event)) {
+            mFocused.unFocus(this);
             return true;
         }
 
@@ -2641,6 +2658,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
             return super.dispatchGenericFocusedEvent(event);
         } else if (mFocused != null && (mFocused.mPrivateFlags & PFLAG_HAS_BOUNDS)
                 == PFLAG_HAS_BOUNDS) {
+			mFocused.unFocus(this);
             return mFocused.dispatchGenericMotionEvent(event);
         }
         return false;
